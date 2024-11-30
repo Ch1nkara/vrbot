@@ -1,0 +1,35 @@
+[api]
+# The api that does the simulation and return the pace notes alongside the isochrones
+url = "https://routage.vrzen.org/Simulation"
+
+[parameters]
+# Go to https://routage.vrzen.org/ with a browser and copy the id used
+userID = "00000000-0000-0000-0000-000000000000"
+# Race name, used to determine forbidden areas and avoid them
+course = "VG2024"
+# Unecessary profil info
+preferences = "EMPTY::EMAIL:10:MN:FR:"
+
+[parametres]
+# 1,2,5 -> Sail configuration. 
+# All options being FULL_PACK,1,2,4,7,3,6,5,FOILS,WINCHPRO,POLISH,MAGIC_FURLER,CONFORT_LOUNGE,VRTEX_JACKET
+# See virtual_regatta.toml for sail names (2 is spi)
+# 16 -> Calculate the route for the next 16 days
+# 60C -> Use 1h isochrone steps and constant heading 
+# The rest is unknown
+1 = "1,2,5:16:4:False:60C:23::1:"
+2 = ":False:True:"
+3 = ":MIXGEFS025"
+
+[headers]
+User-Agent = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0"
+Accept = "*/*"
+Accept-Language = "en-US,en;q=0.5"
+Accept-Encoding = "gzip, deflate, br, zstd"
+Referer = "https://routage.vrzen.org/"
+Connection = "keep-alive"
+Cookie = "UserID=00000000-0000-0000-0000-000000000000"
+Sec-Fetch-Dest = "empty"
+Sec-Fetch-Mode = "cors"
+Sec-Fetch-Site = "same-origin"
+Priority = "u=0"
