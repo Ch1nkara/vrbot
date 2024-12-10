@@ -3,11 +3,9 @@ import time
 import toml
 import base64
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 config = toml.load('virtual_regatta.toml')
-authToken=''
-userId=''
 
 
 def setSail(sailId):
@@ -68,12 +66,14 @@ def getPosition():
   timestamp = track_list[len(track_list) - 1]['ts'] // 1000
   lat = track_list[len(track_list) - 1]['lat']
   lng = track_list[len(track_list) - 1]['lon']
+  with open('boat.json', 'r') as file:
+    boatData = json.load(file)
+  boatData['ts'] = timestamp
+  boatData['lat'] = lat
+  boatData['lng'] = lng
+  with open('boat.json', 'w') as file:
+    json.dump(boatData, file)
   return timestamp, lat, lng
-
-
-# DEBUG
-#def getPosition():
-#  return 1732897682, -20, -20
 
 
 def isValid(token):
@@ -88,9 +88,10 @@ def isValid(token):
 
 
 def logIn():
-  global authToken, userId
+  with open('boat.json', 'r') as file:
+    boatData = json.load(file)
   # Login only if the jwt is expired
-  if isValid(authToken):
+  if isValid(boatData['authToken']):
     #log('DEBUG', 'token still valid')
     return
   loginPayload = {
@@ -109,12 +110,17 @@ def logIn():
   if 'authToken' not in response_data:
     raise ValueError('error during login: ' + response.text)
   log('INFO', 'Renewed token')
-  #log('DEBUG', f"renewing token: {response_data['authToken']}")
-  authToken = response_data['authToken']
-  userId = response_data['userId']
+  with open('boat.json', 'r') as file:
+    boatData = json.load(file)
+  boatData['authToken'] = response_data['authToken']
+  boatData['userId'] = response_data['userId']
+  with open('boat.json', 'w') as file:
+    json.dump(boatData, file)
 
 
 def sendEvent(actions, eventKey):
+  with open('boat.json', 'r') as file:
+    boatData = json.load(file)
   eventPayload = {
     '@class': 'LogEventRequest',
     'eventKey': eventKey,
@@ -122,8 +128,8 @@ def sendEvent(actions, eventKey):
     'leg_num': config['race']['leg_num'],
     'actions': actions,
     'ts': int(time.time() * 1000),
-    'authToken': authToken,
-    'playerId': userId
+    'authToken': boatData['authToken'],
+    'playerId': boatData['userId']
   }
   response = requests.post(
     config['api']['prod_url'] + '/LogEventRequest', 
@@ -138,7 +144,7 @@ def sendEvent(actions, eventKey):
 
 
 def log(level, message):
-  timestamp = datetime.now().strftime("%Y/%m/%d-%Hh%Mm%Ss")
+  timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d-%Hh%Mm%SsZ")
   print(f"{timestamp} [{level}] {message}")
 
 

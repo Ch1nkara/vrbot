@@ -6,19 +6,19 @@ import urllib3
 from datetime import datetime, timezone
 from geopy.distance import geodesic
 from geopy.point import Point
-from virtual_regatta import getPosition, log
 
 config = toml.load('routing.toml')
 
 
 def buildPaceNotes():
-  (ts, lat, lng) = getPosition() # Get last postition from vr track
+  with open('boat.json', 'r') as file:
+    boatData = json.load(file)
+  (ts, lat, lng) = (boatData['ts'], boatData['lat'], boatData['lng'])
   (lat, lng) = updatePosition(ts, lat, lng) # Estimate the current position based on speed/heading
   #log('DEBUG', f"buildPaceNotes updated position: {lat}, {lng}")
   (nextLat, nextLng) = getDestination(lat, lng)
   #log('DEBUG', f"buildPaceNotes destination: {nextLat}, {nextLng}")
   paceNotes = getRouting(lat, lng, nextLat, nextLng)
-  #paceNotes = getRouting(-22.625555, -30.1625, 46.49166, -1.79083)
   with open('pace_notes.json', 'w') as file:
     json.dump(paceNotes, file)
 
@@ -29,14 +29,10 @@ def updatePosition(ts, lat, lng):
     log('WARN', ''.join([
       'Last postion too old to compute current one: ',
       datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M'),
+      ' which was ',
+      str(datetime.now(timezone.utc) - datetime.fromtimestamp(ts, timezone.utc)),
+      ' ago'
     ]))
-  log('INFO', ''.join([
-    'Last position was from ',
-    datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M'),
-    ' which was ',
-    str(datetime.now(timezone.utc) - datetime.fromtimestamp(ts, timezone.utc)),
-    ' ago'
-  ]))
   with open('boat.json', 'r') as file:
     boatData = json.load(file)
   distance = boatData['speed'] * (now - ts) / 3600
@@ -99,6 +95,11 @@ def getRouting(from_lat, from_lng, dest_lat, dest_lng):
     itinary = f"from [{from_lat},{from_lng}] to [{dest_lat},{dest_lng}]"
     raise ValueError(f"error during routing {itinary}: {response.text}")
   return response_data['listDetailSimulation']
+
+
+def log(level, message):
+  timestamp = datetime.now(timezone.utc).strftime("%Y/%m/%d-%Hh%Mm%SsZ")
+  print(f"{timestamp} [{level}] {message}")
 
 
 if __name__ == '__main__':
