@@ -43,24 +43,21 @@ def updatePosition(ts, lat, lng):
 def getDestination(lat, lng):
   with open('trip.json', 'r') as file:
     tripData = json.load(file)
-  newTripData = {}
-  foundNext = False
   # Update the checkpoint list by removing the first ones as the become closer than 4000nm
-  for checkpoint in tripData:
-    if foundNext:
-      newTripData[checkpoint] = tripData[checkpoint]
-      continue
-    if geodesic([lat, lng], [tripData[checkpoint][0], tripData[checkpoint][1]]).nautical < 4000:
-      continue
+  nextPoint = []
+  while tripData:
+    nextPoint = tripData[list(tripData.keys())[0]]
+    # Remove checkpoint when they are closer than 4000nm
+    if geodesic([lat, lng], [nextPoint[0], nextPoint[1]]).nautical < 4000:
+      nextPoint = tripData.pop(list(tripData.keys())[0])
     else:
-      newTripData[checkpoint] = tripData[checkpoint]
-      foundNext = True
+      break
   # Case when the finish line is closer than 4000nm
-  if len(newTripData) == 0:
-    newTripData = {max(tripData.keys()): tripData[max(tripData.keys())]}
+  if not tripData:
+    tripData['0'] = nextPoint
   with open('trip.json', 'w') as file:
-    json.dump(newTripData, file)
-  return next(iter(newTripData.items()))[1]
+    json.dump(tripData, file)
+  return nextPoint
 
 
 def getRouting(from_lat, from_lng, dest_lat, dest_lng):
