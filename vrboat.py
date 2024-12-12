@@ -139,7 +139,16 @@ def log(level, message):
 
 
 if __name__ == '__main__':
-  vrBoat = VrBoat({"speed": 1, "heading": 1, "sail": 1, "energy": 100, "authToken": "", "userId": "", "ts": int(time.time()), "lat": -50, "lng": 50})
+  vrBoat = VrBoat({
+    "speed": 1, 
+    "heading": 1, 
+    "sail": 1, 
+    "energy": 100, 
+    "authToken": "", 
+    "userId": "", 
+    "ts": int(time.time()), 
+    "lat": -45, 
+    "lng": 55
+  })
   vrBoat.setBearing(125)
   log('DEBUG', vrBoat.boatData)
-

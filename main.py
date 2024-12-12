@@ -26,19 +26,28 @@ class Skipper:
     # If paceNotes is empty, do nothing
     if not paceNotes:
       return
-    nextActionTime = parser.isoparse(paceNotes[0]['date'])
     now = dt.datetime.now(dt.timezone.utc)
-    # Do nothing until the next action is in the past
-    if nextActionTime > now:
-      return
-    pacePlan = paceNotes.pop(0)
-    try:
-      self.vrboat.doPacePlan(pacePlan)
-      self.sdb.setObj('boat', self.vrboat.boatData)
-      vrboat.log('INFO', f"Executed pacePlan: {pacePlan['date']}")
-    except Exception as e:
-      vrboat.log('ERR', f"Error executin pacePlan {pacePlan}: {e}")
-    self.sdb.setPaceNotes(paceNotes)
+    # Iterate over paceNotes in order
+    for note in sorted(paceNotes.keys(), key=lambda k: int(k.replace("paceNote", ""))):
+      noteDate = dt.datetime.strptime(paceNotes[note]['date'], "%Y-%m-%dT%H:%M:%S.%fZ")
+      noteDate = noteDate.replace(tzinfo=dt.timezone.utc)
+      # Look for the next note to apply: it's date is less than 5 minutes ago
+      if noteDate < now - dt.timedelta(minutes=5):
+        #vrboat.log('DEBUG', f"note {note} too old: {paceNotes[note]['date']}")
+        continue
+      # Check if it's time to apply it: it's date is in the past
+      if noteDate <= now:
+        #vrboat.log('DEBUG', f"note {note} must be applied: {paceNotes[note]['date']}")
+        try:
+          self.vrboat.doPacePlan(paceNotes[note])
+          self.sdb.setObj('boat', self.vrboat.boatData)
+          vrboat.log('INFO', f"Executed pacePlan: {paceNotes[note]['date']}")
+        except Exception as e:
+          vrboat.log('ERR', f"Error executing pacePlan {paceNotes[note]}: {e}")
+      else:
+        #vrboat.log('DEBUG', f"note {note} still in the futur: {paceNotes[note]['date']}")
+        pass
+      break
 
 
   def updatePaceNotes(self):
@@ -55,40 +64,50 @@ class Skipper:
 
   def updateActions(self):
     self.vrboat.updatePosition()
-    rtng = routing.Routing(self.sdb.getObj('trip'), self.vrboat.boatData)
+    rtng = routing.Routing(self.sdb.getObj('destination'), self.vrboat.boatData)
     self.sdb.setPaceNotes(rtng.getPaceNotes())
-    self.sdb.setObj('trip', rtng.trip)
+    self.sdb.setObj('destination', rtng.destination)
     self.sdb.setObj('boat', self.vrboat.boatData)
     vrboat.log('INFO', f"Updated Pace Notes")
 
 
-def maintenance(localMode):
-  boatData = {"speed": 1, "heading": 1, "sail": 1, "energy": 100, "authToken": "", "userId": "", "ts": int(time.time()), "lat": -50, "lng": 50}
+def init(localMode):
+  boatData = {
+    "speed": 1, 
+    "heading": 1, 
+    "sail": 1, 
+    "energy": 100, 
+    "authToken": "", 
+    "userId": "", 
+    "ts": int(time.time()), 
+    "lat": -45, 
+    "lng": 55
+  }
+  destination = {"waypoint": 4}
 
-  trip = {"0":[-40, 25], "1":[-45, 60], "2":[-43, 100], "3":[-47, 140], "4":[-53, -170], "5":[-53, -120], "6":[-57, -80], "7":[-53, -56.5], "8":[-31, -40], "9":[-4, -31], "10":[20, -30], "11":[43, -25], "12":[46.49166, -1.79083]}
-
-  storage.flushAndInit('vrbot', boatData, trip, localMode)
+  storage.flushAndInit('vrbot', boatData, destination, localMode)
   sdb = storage.SimpleDBWrapper('vrbot', localMode)
   boat = vrboat.VrBoat(sdb.getObj('boat'))
   skipper = Skipper(boat, sdb)
   skipper.updateActions()
-  storage.printDb(sdb)
+  vrboat.log('INFO', 'Database: initialized')
+  sys.exit(0)
+
+
+def peek(objName, localMode):
+  sdb = storage.SimpleDBWrapper('vrbot', localMode)
+  vrboat.log('INFO', f"{objName}: {sdb.getObj(objName)}")
   sys.exit(0)
 
 
 def main(localMode):
   sdb = storage.SimpleDBWrapper('vrbot', localMode)
-  #maintenance(localMode)
-  boat = vrboat.VrBoat(sdb.getObj('boat'))
-  skipper = Skipper(boat, sdb)
-  skipper.updateActions()
   if localMode:
     while True:
       boat = vrboat.VrBoat(sdb.getObj('boat'))
       skipper = Skipper(boat, sdb)
       skipper.updatePaceNotes()
       skipper.followPaceNotes()
-      sdb.setObj('boat', skipper.vrboat.boatData)
       #sleep around 5 min between race actions
       time.sleep(293)
   else:
@@ -96,13 +115,12 @@ def main(localMode):
     skipper = Skipper(boat, sdb)
     skipper.updatePaceNotes()
     skipper.followPaceNotes()
-    sdb.setObj('boat', skipper.vrboat.boatData)
-
+ 
 
 if __name__ == '__main__':
-  localMode = False
-  if 'standalone' in sys.argv:
-    localMode = True
+  localMode = True
+  if 'init' in sys.argv:
+    init(localMode)
+  if 'peek' in sys.argv:
+    peek(sys.argv[sys.argv.index('peek') + 1], localMode)
   main(localMode)
-
-

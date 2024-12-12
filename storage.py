@@ -47,7 +47,7 @@ class SimpleDBWrapper:
         json.dump(data, file)
       log('INFO', f"Domain '{self.domainName}' deleted locally.")
     else:
-      self.simpledb.create_domain(DomainName=self.domainName)
+      self.simpledb.delete_domain(DomainName=self.domainName)
       log('INFO', f"Domain '{self.domainName}' deleted in SimpleDB.")
 
 
@@ -131,18 +131,19 @@ class SimpleDBWrapper:
     ]
     self.put_attributes(DomainName=self.domainName, ItemName=itemName, Attributes=attributes)
 
+
   def getPaceNotes(self):
     query = f"SELECT * FROM `{self.domainName}` WHERE itemName() LIKE 'paceNote%'"
     rawNotes = self.select(SelectExpression=query)
-    return [
-      {attr['Name']: strToNum(attr['Value']) for attr in item['Attributes']}
+    return {
+      item['Name']: self.getObj(item['Name'])
       for item in rawNotes['Items']
-    ]
+    }
 
 
   def setPaceNotes(self, paceNotes):
-    for i, item in enumerate(paceNotes, 1):
-      self.setObj(f"paceNote{i}", item)
+    for note in paceNotes:
+      self.setObj(note, paceNotes[note])
 
 
 def strToNum(value):
@@ -166,18 +167,13 @@ def strToNum(value):
   return value
 
 
-def flushAndInit(domainName, boatData, trip, localMode=False):  
+def flushAndInit(domainName, boatData, destination, localMode=False):  
   sdb = SimpleDBWrapper('vrbot', localMode)
   sdb.delete_domain()
   sdb = SimpleDBWrapper('vrbot', localMode)
   sdb.setObj('boat', boatData)
-  sdb.setObj('trip', trip)
-
-
-def printDb(sdb):
-  log('INFO', sdb.getObj('boat'))
-  log('INFO', sdb.getObj('trip'))
-  log('INFO', sdb.getPaceNotes())
+  sdb.setObj('destination', destination)
+  log('INFO', 'Database: flushed and basic init done')
 
 
 def log(level, message):
@@ -186,7 +182,21 @@ def log(level, message):
 
 
 if __name__ == '__main__':
-  flushAndInit('vrbot')
+  boatData = {
+    "speed": 1, 
+    "heading": 1, 
+    "sail": 1, 
+    "energy": 100, 
+    "authToken": "", 
+    "userId": "", 
+    "ts": int(time.time()), 
+    "lat": -45, 
+    "lng": 55
+  }
+  destination = {"waypoint": 4}
+
+  flushAndInit('vrbot', boatData, destination, True)
   sdb = SimpleDBWrapper('vrbot', True)
-  printDb(sdb)
+  log('INFO', f"boat:{sdb.getObj('boat')}")
+  log('INFO', f"destination:{sdb.getObj('destination')}")
   #sdb.delete_domain()

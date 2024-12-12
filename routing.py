@@ -3,6 +3,7 @@ import toml
 import json
 import time
 import urllib3
+import ast
 from datetime import datetime, timezone
 from geopy.distance import geodesic
 from geopy.point import Point
@@ -10,8 +11,8 @@ from geopy.point import Point
 config = toml.load('routing.toml')
 
 class Routing:
-  def __init__(self, trip, boatData):
-    self.trip = trip
+  def __init__(self, destination, boatData):
+    self.destination = destination
     self.boatData = boatData
 
 
@@ -42,19 +43,20 @@ class Routing:
 
 
   def getDestination(self, lat, lng):
-    # Update the checkpoint list by removing the first ones as the become closer than 4000nm
-    nextPoint = []
-    while self.trip:
-      nextPoint = self.trip[list(self.trip.keys())[0]]
-      # Remove checkpoint when they are closer than 4000nm
-      if geodesic([lat, lng], [nextPoint[0], nextPoint[1]]).nautical < 4000:
-        nextPoint = self.trip.pop(list(self.trip.keys())[0])
-      else:
+    wpt = self.destination['waypoint']
+    wpt_lat = ast.literal_eval(config['trip'][str(wpt)])[0]
+    wpt_lng = ast.literal_eval(config['trip'][str(wpt)])[1]
+    # Until the last waypoint, go to next if this one is closer than 2500nm
+    while str(wpt + 1) in config['trip']:
+      if geodesic([lat, lng], [wpt_lat, wpt_lng]).nautical > 2500:
         break
-    # Case when the finish line is closer than 4000nm
-    if not self.trip:
-      self.trip['0'] = nextPoint
-    return nextPoint
+      else:
+        wpt += 1
+        wpt_lat = ast.literal_eval(config['trip'][str(wpt)])[0]
+        wpt_lng = ast.literal_eval(config['trip'][str(wpt)])[1]
+        self.destination = {'waypoint': wpt}    
+    #log('DEBUG', f"Destination chosen: {wpt}: {wpt_lat}, {wpt_lng}")
+    return (wpt_lat, wpt_lng)
 
 
   def getRouting(self, fromLat, fromLng, destLat, destLng):
@@ -90,16 +92,19 @@ class Routing:
 
 
   def parseVRZen(self, lds):
-    paceNotes = sorted(
-      [{
-        'date': item['dateHeure'], 
+    maxId = max(lds, key=lambda x: x['id'])['id']
+    paceNotes = {
+      f"paceNote{maxId - item['id']}": {
+        'date': item['dateHeure'][:-4] + item['dateHeure'][-1], 
         'heading': item['cap'],
         'speed': (item['vitesse'] / 1.852 if item['vitesse'] is not None else None),
         'sail': item['typeVoile'],
         'energy': item['energie']
-      } for item in lds],
-      key=lambda x: x['date'],
-    )
+      } 
+      for item in lds
+      # keep only the first 80 paceNotes
+      if maxId - item['id'] <= 80
+    }
     return paceNotes
 
 
@@ -109,8 +114,19 @@ def log(level, message):
 
 
 if __name__ == '__main__':
-  trip = {"4": [-53, -170], "5": [-53, -120], "6": [-57, -80], "7": [-53, -56.5], "8": [-31, -40], "9": [-4, -31], "10": [20, -30], "11": [43, -25], "12": [46.49166, -1.79083]}
-  boatData = {"speed": 1, "heading": 1, "sail": 1, "energy": 100, "authToken": "", "userId": "", "ts": int(time.time()), "lat": -50, "lng": 50}
-  routing = Routing(trip, boatData)
+  boatData = {
+    "speed": 1, 
+    "heading": 1, 
+    "sail": 1, 
+    "energy": 100, 
+    "authToken": "", 
+    "userId": "", 
+    "ts": int(time.time()), 
+    "lat": -45, 
+    "lng": 55
+  }
+  destination = {"waypoint": 4}
+
+  routing = Routing(destination, boatData)
   with open('temp.json', 'w') as file:
     json.dump(routing.getPaceNotes(), file)
