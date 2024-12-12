@@ -1,4 +1,5 @@
 routing.toml
-virtual_regatta.toml
+vrboat.toml
+storage.json
 venv/
 __pycache__/

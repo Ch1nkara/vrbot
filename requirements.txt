@@ -1,10 +1,14 @@
+boto3==1.35.78
+botocore==1.35.78
 certifi==2024.8.30
 charset-normalizer==3.4.0
 geographiclib==2.0
 geopy==2.4.1
 idna==3.10
+jmespath==1.0.1
 python-dateutil==2.9.0.post0
 requests==2.32.3
+s3transfer==0.10.4
 six==1.17.0
 toml==0.10.2
 urllib3==2.2.3

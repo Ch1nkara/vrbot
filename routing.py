@@ -9,89 +9,98 @@ from geopy.point import Point
 
 config = toml.load('routing.toml')
 
-
-def buildPaceNotes():
-  with open('boat.json', 'r') as file:
-    boatData = json.load(file)
-  (ts, lat, lng) = (boatData['ts'], boatData['lat'], boatData['lng'])
-  (lat, lng) = updatePosition(ts, lat, lng) # Estimate the current position based on speed/heading
-  #log('DEBUG', f"buildPaceNotes updated position: {lat}, {lng}")
-  (nextLat, nextLng) = getDestination(lat, lng)
-  #log('DEBUG', f"buildPaceNotes destination: {nextLat}, {nextLng}")
-  paceNotes = getRouting(lat, lng, nextLat, nextLng)
-  with open('pace_notes.json', 'w') as file:
-    json.dump(paceNotes, file)
+class Routing:
+  def __init__(self, trip, boatData):
+    self.trip = trip
+    self.boatData = boatData
 
 
-def updatePosition(ts, lat, lng):
-  now = int(time.time())
-  if now - ts > 7200: # last track position older than 2h
-    log('WARN', ''.join([
-      'Last postion too old to compute current one: ',
-      datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M'),
-      ' which was ',
-      str(datetime.now(timezone.utc) - datetime.fromtimestamp(ts, timezone.utc)),
-      ' ago'
-    ]))
-  with open('boat.json', 'r') as file:
-    boatData = json.load(file)
-  distance = boatData['speed'] * (now - ts) / 3600
-  nowPoint = geodesic(nautical=distance).destination(Point(lat, lng), boatData['heading'])
-  return nowPoint.latitude, nowPoint.longitude
+  def getPaceNotes(self):
+    # Estimate the current position based on speed/heading
+    (lat, lng) = self.getPosition() 
+    #log('DEBUG', f"buildPaceNotes updated position: {lat}, {lng}")
+    (nextLat, nextLng) = self.getDestination(lat, lng)
+    #log('DEBUG', f"buildPaceNotes destination: {nextLat}, {nextLng}")
+    vrZenNotes = self.getRouting(lat, lng, nextLat, nextLng)
+    return self.parseVRZen(vrZenNotes)
 
 
-def getDestination(lat, lng):
-  with open('trip.json', 'r') as file:
-    tripData = json.load(file)
-  # Update the checkpoint list by removing the first ones as the become closer than 4000nm
-  nextPoint = []
-  while tripData:
-    nextPoint = tripData[list(tripData.keys())[0]]
-    # Remove checkpoint when they are closer than 4000nm
-    if geodesic([lat, lng], [nextPoint[0], nextPoint[1]]).nautical < 4000:
-      nextPoint = tripData.pop(list(tripData.keys())[0])
-    else:
-      break
-  # Case when the finish line is closer than 4000nm
-  if not tripData:
-    tripData['0'] = nextPoint
-  with open('trip.json', 'w') as file:
-    json.dump(tripData, file)
-  return nextPoint
+  def getPosition(self):
+    (ts, lat, lng) = (self.boatData['ts'], self.boatData['lat'], self.boatData['lng'])
+    now = int(time.time())
+    if now - ts > 7200: # last track position older than 2h
+      log('WARN', ''.join([
+        'Last postion too old to compute current one: ',
+        datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M'),
+        ' which was ',
+        str(datetime.now(timezone.utc) - datetime.fromtimestamp(ts, timezone.utc)),
+        ' ago'
+      ]))
+    distance = self.boatData['speed'] * (now - ts) / 3600
+    nowPoint = geodesic(nautical=distance).destination(Point(lat, lng), self.boatData['heading'])
+    return nowPoint.latitude, nowPoint.longitude
 
 
-def getRouting(from_lat, from_lng, dest_lat, dest_lng):
-  with open('boat.json', 'r') as file:
-    boatData = json.load(file)
-  routingPayload = {
-    "latitude_origine": from_lat,
-    "longitude_origine": from_lng,
-    "latitude_cible": dest_lat,
-    "longitude_cible": dest_lng
-  }
-  routingPayload.update(config['parameters'])    
-  parametres = [
-    config['parametres']['1'],
-    str(boatData['sail']), ':',
-    str(boatData['heading']),
-    config['parametres']['2'],
-    str(int(boatData['energy'])),
-    config['parametres']['3']
-  ]
-  routingPayload['parametres'] = ''.join(parametres)
-  urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-  response = requests.get(
-    config['api']['url'], 
-    headers=config['headers'], 
-    params=routingPayload,
-    verify=False
-  )
-  response.raise_for_status()
-  response_data = response.json()
-  if response_data['statut'] == 'KO':
-    itinary = f"from [{from_lat},{from_lng}] to [{dest_lat},{dest_lng}]"
-    raise ValueError(f"error during routing {itinary}: {response.text}")
-  return response_data['listDetailSimulation']
+  def getDestination(self, lat, lng):
+    # Update the checkpoint list by removing the first ones as the become closer than 4000nm
+    nextPoint = []
+    while self.trip:
+      nextPoint = self.trip[list(self.trip.keys())[0]]
+      # Remove checkpoint when they are closer than 4000nm
+      if geodesic([lat, lng], [nextPoint[0], nextPoint[1]]).nautical < 4000:
+        nextPoint = self.trip.pop(list(self.trip.keys())[0])
+      else:
+        break
+    # Case when the finish line is closer than 4000nm
+    if not self.trip:
+      self.trip['0'] = nextPoint
+    return nextPoint
+
+
+  def getRouting(self, fromLat, fromLng, destLat, destLng):
+    routingPayload = {
+      "latitude_origine": fromLat,
+      "longitude_origine": fromLng,
+      "latitude_cible": destLat,
+      "longitude_cible": destLng
+    }
+    routingPayload.update(config['parameters'])    
+    parametres = [
+      config['parametres']['1'],
+      str(self.boatData['sail']), ':',
+      str(self.boatData['heading']),
+      config['parametres']['2'],
+      str(int(self.boatData['energy'])),
+      config['parametres']['3']
+    ]
+    routingPayload['parametres'] = ''.join(parametres)
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    response = requests.get(
+      config['api']['url'], 
+      headers=config['headers'], 
+      params=routingPayload,
+      verify=False
+    )
+    response.raise_for_status()
+    responseData = response.json()
+    if responseData['statut'] == 'KO':
+      itinary = f"from [{fromLat},{fromLng}] to [{destLat},{destLng}]"
+      raise ValueError(f"error during routing {itinary}: {response.text}")
+    return responseData['listDetailSimulation']
+
+
+  def parseVRZen(self, lds):
+    paceNotes = sorted(
+      [{
+        'date': item['dateHeure'], 
+        'heading': item['cap'],
+        'speed': (item['vitesse'] / 1.852 if item['vitesse'] is not None else None),
+        'sail': item['typeVoile'],
+        'energy': item['energie']
+      } for item in lds],
+      key=lambda x: x['date'],
+    )
+    return paceNotes
 
 
 def log(level, message):
@@ -100,4 +109,8 @@ def log(level, message):
 
 
 if __name__ == '__main__':
-  getRouting(-22.625555, -30.1625, 46.49166, -1.79083)
+  trip = {"4": [-53, -170], "5": [-53, -120], "6": [-57, -80], "7": [-53, -56.5], "8": [-31, -40], "9": [-4, -31], "10": [20, -30], "11": [43, -25], "12": [46.49166, -1.79083]}
+  boatData = {"speed": 1, "heading": 1, "sail": 1, "energy": 100, "authToken": "", "userId": "", "ts": int(time.time()), "lat": -50, "lng": 50}
+  routing = Routing(trip, boatData)
+  with open('temp.json', 'w') as file:
+    json.dump(routing.getPaceNotes(), file)
