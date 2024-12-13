@@ -20,6 +20,7 @@ Can be run as an AWS Lambda, stays in the free tiers with the following monthly 
  - Rename routing.toml_example as routing.toml and edit the parameters near comment blocks:
     - From a browser connected to https://routage.vrzen.org/, inspect the page to get the userID and the race name
     - Set the option available to the bot (sails, foils...)
+    - Set the trip waypoints (around 1500nm between each) the bot will use for its routing
  - In main.py, edit init() with recent boat data (position, speed, sail, destination...)
 
 ## Installation Option 1: As an amazon AWS Lambda
